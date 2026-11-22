@@ -15,6 +15,7 @@ public partial class App : Application
         var core = new WendyCore();
         core.RegisterManager(new NetworkManager());
         core.RegisterModule(new NetworkModule());
+        core.RegisterModule(new NetworkRecoveryModule());
 
         var mainWindow = new MainWindow(core);
         MainWindow = mainWindow;
