@@ -10,6 +10,7 @@ namespace WENDY.Wendy;
 public sealed class WendyCore
 {
     private const string NetworkManagerName = "Network";
+    private const string FlushDnsCacheActionId = "network.flush-dns-cache";
 
     private readonly List<IManager> _managers = [];
     private readonly List<IModule> _modules = [];
@@ -70,6 +71,117 @@ public sealed class WendyCore
                 : "The selected module reported that the task did not succeed.");
     }
 
+    /// <summary>
+    /// Runs diagnostics and proposes only recovery actions supported by the collected evidence.
+    /// </summary>
+    public async Task<RecoveryPlan> CreateRecoveryPlanAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var diagnostic = await DiagnoseAndExecuteAsync(cancellationToken);
+        var actions = new List<RecoveryAction>();
+        string explanation;
+
+        if (diagnostic.Decision.Kind == CoreDecisionKind.DnsFailure)
+        {
+            var controlDnsSucceeded = TryReadModuleFact(
+                diagnostic.ModuleResult,
+                "ControlCheck.Dns.Success",
+                out var controlDnsValue)
+                && controlDnsValue;
+
+            actions.Add(new RecoveryAction(
+                FlushDnsCacheActionId,
+                "Flush the Windows DNS cache",
+                "Clear cached hostname-to-IP results, then repeat the YouTube connectivity checks.",
+                "This clears the local DNS resolver cache only. It does not change DNS servers, proxy settings, routes, or provider configuration.",
+                "Normally no administrator privileges are required; Windows may deny the operation under restricted policies.",
+                "FlushDnsCache"));
+
+            explanation = controlDnsSucceeded
+                ? "The control hostname resolved while YouTube did not. This points to a YouTube-specific or cached DNS result. Flushing the local cache is a limited, reversible maintenance step, but it cannot bypass provider-side restrictions."
+                : "Both YouTube and the control hostname failed DNS resolution. This suggests a broader DNS problem. Flushing the local cache is a low-impact first step; if DNS still fails, Wendy should investigate adapter and resolver configuration rather than changing it blindly.";
+        }
+        else
+        {
+            explanation = diagnostic.Decision.Kind switch
+            {
+                CoreDecisionKind.YouTubeReachable =>
+                    "The basic YouTube DNS, TCP and HTTPS checks succeeded. No network repair is recommended by this diagnostic run.",
+                CoreDecisionKind.TcpFailure =>
+                    "DNS resolved, but the TCP connection failed. Wendy has no sufficiently supported, low-risk automatic repair for this result; inspect routing, firewall and provider connectivity before changing settings.",
+                CoreDecisionKind.HttpsFailure =>
+                    "DNS and TCP succeeded, but HTTPS failed. The evidence is not sufficient to alter DNS or proxy settings automatically; the next diagnostic stage should inspect TLS, proxy and HTTP response details.",
+                CoreDecisionKind.IncompleteReport =>
+                    "The diagnostic report is incomplete. Recovery is withheld until the missing evidence is collected.",
+                _ =>
+                    "The available diagnostic evidence does not currently justify an automatic network change."
+            };
+        }
+
+        return new RecoveryPlan(diagnostic, actions.AsReadOnly(), explanation);
+    }
+
+    /// <summary>
+    /// Executes a recovery action only when the caller explicitly confirms approval.
+    /// Successful actions are followed by a fresh diagnostic verification.
+    /// </summary>
+    public async Task<RecoveryExecutionResult> ExecuteApprovedRecoveryAsync(
+        RecoveryAction action,
+        bool userApproved,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (action.Id != FlushDnsCacheActionId || action.Operation != "FlushDnsCache")
+        {
+            return new RecoveryExecutionResult(
+                action,
+                userApproved,
+                new ModuleResult(
+                    false,
+                    "WendyCore rejected an unknown or modified recovery action.",
+                    new Dictionary<string, string> { ["Recovery.Executed"] = "False" }),
+                null);
+        }
+
+        if (!userApproved)
+        {
+            return new RecoveryExecutionResult(
+                action,
+                false,
+                new ModuleResult(
+                    false,
+                    "The recovery action was not executed because the user did not approve it.",
+                    new Dictionary<string, string> { ["Recovery.Executed"] = "False" }),
+                null);
+        }
+
+        var request = new ModuleRequest(
+            action.Operation,
+            new Dictionary<string, string> { ["UserApproved"] = "True" });
+
+        var selectedModule = _modules.FirstOrDefault(module => module.CanExecute(request));
+        if (selectedModule is null)
+        {
+            return new RecoveryExecutionResult(
+                action,
+                true,
+                new ModuleResult(
+                    false,
+                    "No registered module can execute this recovery action.",
+                    new Dictionary<string, string> { ["Recovery.Executed"] = "False" }),
+                null);
+        }
+
+        var result = await selectedModule.ExecuteAsync(request, cancellationToken);
+        var verification = result.Succeeded
+            ? await DiagnoseAsync(cancellationToken)
+            : null;
+
+        return new RecoveryExecutionResult(action, true, result, verification);
+    }
+
     public async Task<CoreDecision> DiagnoseAsync(
         CancellationToken cancellationToken = default)
     {
@@ -100,9 +212,7 @@ public sealed class WendyCore
             ["RecommendedNextStep"] = decision.RecommendedNextStep
         };
 
-        return new ModuleRequest(
-            $"Handle{decision.Kind}",
-            parameters);
+        return new ModuleRequest($"Handle{decision.Kind}", parameters);
     }
 
     private static CoreDecision InterpretReports(IReadOnlyList<ManagerReport> reports)
@@ -174,13 +284,21 @@ public sealed class WendyCore
             reports);
     }
 
-    private static bool TryReadFact(
-        ManagerReport report,
+    private static bool TryReadFact(ManagerReport report, string key, out bool value)
+    {
+        value = false;
+        return report.Facts.TryGetValue(key, out var rawValue)
+            && bool.TryParse(rawValue, out value);
+    }
+
+    private static bool TryReadModuleFact(
+        ModuleResult? result,
         string key,
         out bool value)
     {
         value = false;
-        return report.Facts.TryGetValue(key, out var rawValue)
+        return result is not null
+            && result.Data.TryGetValue(key, out var rawValue)
             && bool.TryParse(rawValue, out value);
     }
 
