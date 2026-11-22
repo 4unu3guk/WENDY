@@ -86,7 +86,10 @@ public sealed class NetworkEnvironmentManager : BaseManager
         {
             using var settings = Registry.CurrentUser.OpenSubKey(InternetSettingsRegistryPath);
 
-            var proxyEnabled = Convert.ToInt32(settings?.GetValue("ProxyEnable") ?? 0) == 1;
+            var proxyEnabled = int.TryParse(
+                settings?.GetValue("ProxyEnable")?.ToString(),
+                out var proxyEnabledValue)
+                && proxyEnabledValue == 1;
             var proxyServer = settings?.GetValue("ProxyServer")?.ToString() ?? string.Empty;
             var autoConfigUrl = settings?.GetValue("AutoConfigURL")?.ToString() ?? string.Empty;
 
