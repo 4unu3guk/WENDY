@@ -1,5 +1,6 @@
 using System.Windows;
 using WENDY.Managers;
+using WENDY.Modules;
 using WENDY.Wendy;
 
 namespace WENDY;
@@ -13,6 +14,7 @@ public partial class App : Application
         // Composition root: the application assembles the core and its components.
         var core = new WendyCore();
         core.RegisterManager(new NetworkManager());
+        core.RegisterModule(new NetworkModule());
 
         var mainWindow = new MainWindow(core);
         MainWindow = mainWindow;
