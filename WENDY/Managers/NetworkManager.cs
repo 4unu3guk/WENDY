@@ -1,8 +1,5 @@
-using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
 using System.Net.Http;
-using WENDY.Managers;
+using System.Net.Sockets;
 
 namespace WENDY.Managers;
 
@@ -34,8 +31,7 @@ public sealed class NetworkManager : BaseManager
             facts["Dns.Success"] = dnsSucceeded.ToString();
             facts["Dns.Addresses"] = string.Join(", ", addresses.Select(address => address.ToString()));
         }
-        catch (Exception exception) when (
-            exception is SocketException or ArgumentException)
+        catch (SocketException exception)
         {
             facts["Dns.Success"] = false.ToString();
             facts["Dns.Error"] = exception.Message;
@@ -54,12 +50,15 @@ public sealed class NetworkManager : BaseManager
             tcpSucceeded = client.Connected;
             facts["Tcp443.Success"] = tcpSucceeded.ToString();
         }
-        catch (Exception exception) when (
-            exception is SocketException or OperationCanceledException)
+        catch (SocketException exception)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             facts["Tcp443.Success"] = false.ToString();
             facts["Tcp443.Error"] = exception.Message;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            facts["Tcp443.Success"] = false.ToString();
+            facts["Tcp443.Error"] = "Connection attempt timed out.";
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -81,13 +80,18 @@ public sealed class NetworkManager : BaseManager
             facts["Https.StatusCode"] = ((int)response.StatusCode).ToString();
             facts["Https.FinalUri"] = response.RequestMessage?.RequestUri?.ToString() ?? ProbeUrl;
         }
-        catch (Exception exception) when (
-            exception is HttpRequestException or OperationCanceledException)
+        catch (HttpRequestException exception)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             facts["Https.Success"] = false.ToString();
             facts["Https.Error"] = exception.Message;
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            facts["Https.Success"] = false.ToString();
+            facts["Https.Error"] = "HTTPS request timed out.";
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         var isHealthy = dnsSucceeded && tcpSucceeded && httpsSucceeded;
         var summary = isHealthy
