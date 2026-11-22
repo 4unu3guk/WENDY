@@ -68,18 +68,14 @@ public sealed class NetworkRecoveryModule : IModule
             {
                 await process.WaitForExitAsync(timeout.Token);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                try
-                {
-                    if (!process.HasExited)
-                        process.Kill(entireProcessTree: true);
-                }
-                catch (InvalidOperationException)
-                {
-                    // The process exited between the check and the kill attempt.
-                }
-
+                TryStopProcess(process);
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                TryStopProcess(process);
                 return Failure("Flushing the DNS cache timed out.");
             }
 
@@ -100,6 +96,23 @@ public sealed class NetworkRecoveryModule : IModule
         catch (Win32Exception exception)
         {
             return Failure($"Windows could not start ipconfig.exe: {exception.Message}");
+        }
+    }
+
+    private static void TryStopProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // The process exited between the check and the kill attempt.
+        }
+        catch (Win32Exception)
+        {
+            // The process could not be stopped; cancellation still propagates to the caller.
         }
     }
 
