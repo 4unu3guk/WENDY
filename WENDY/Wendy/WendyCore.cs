@@ -98,7 +98,7 @@ public sealed class WendyCore
                 "FlushDnsCache"));
 
             explanation = controlDnsSucceeded
-                ? "The control hostname resolved while YouTube did not. This points to a YouTube-specific or cached DNS result. Flushing the local cache is a limited, reversible maintenance step, but it cannot bypass provider-side restrictions."
+                ? "The control hostname resolved while YouTube did not. This points to a YouTube-specific or cached DNS result. Flushing the local cache is a limited, low-impact maintenance step, but it cannot bypass provider-side restrictions."
                 : "Both YouTube and the control hostname failed DNS resolution. This suggests a broader DNS problem. Flushing the local cache is a low-impact first step; if DNS still fails, Wendy should investigate adapter and resolver configuration rather than changing it blindly.";
         }
         else
