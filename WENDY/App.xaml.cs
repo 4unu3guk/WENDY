@@ -14,6 +14,7 @@ public partial class App : Application
         // Composition root: the application assembles the core and its components.
         var core = new WendyCore();
         core.RegisterManager(new NetworkManager());
+        core.RegisterManager(new NetworkEnvironmentManager());
         core.RegisterModule(new NetworkModule());
         core.RegisterModule(new NetworkRecoveryModule());
 
