@@ -1,10 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+namespace WENDY.Modules;
 
-namespace WENDY.Modules
+/// <summary>
+/// Common contract for WENDY modules.
+/// A module performs a requested operation and returns a result.
+/// </summary>
+public interface IModule
 {
-    internal class IModule
-    {
-    }
+    string Name { get; }
+
+    bool CanExecute(ModuleRequest request);
+
+    Task<ModuleResult> ExecuteAsync(
+        ModuleRequest request,
+        CancellationToken cancellationToken = default);
 }
