@@ -1,3 +1,5 @@
+using WENDY.Managers;
+
 namespace WENDY.Wendy;
 
 /// <summary>
@@ -7,4 +9,4 @@ public sealed record CoreDecision(
     CoreDecisionKind Kind,
     string Summary,
     string RecommendedNextStep,
-    IReadOnlyList<Managers.ManagerReport> Reports);
+    IReadOnlyList<ManagerReport> Reports);
