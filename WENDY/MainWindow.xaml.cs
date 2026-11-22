@@ -28,4 +28,21 @@ public partial class MainWindow : Window
     public Task<CoreExecutionResult> RunDiagnosticWorkflowAsync(
         CancellationToken cancellationToken = default)
         => Core.DiagnoseAndExecuteAsync(cancellationToken);
+
+    /// <summary>
+    /// Requests a diagnostic run and receives the recovery options selected by WendyCore.
+    /// The UI should display the action details and obtain approval before execution.
+    /// </summary>
+    public Task<RecoveryPlan> CreateRecoveryPlanAsync(
+        CancellationToken cancellationToken = default)
+        => Core.CreateRecoveryPlanAsync(cancellationToken);
+
+    /// <summary>
+    /// Executes a displayed recovery action only after the UI has obtained explicit approval.
+    /// </summary>
+    public Task<RecoveryExecutionResult> ExecuteApprovedRecoveryAsync(
+        RecoveryAction action,
+        bool userApproved,
+        CancellationToken cancellationToken = default)
+        => Core.ExecuteApprovedRecoveryAsync(action, userApproved, cancellationToken);
 }
