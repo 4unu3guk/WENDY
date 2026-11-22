@@ -21,4 +21,11 @@ public partial class MainWindow : Window
     public Task<CoreDecision> RunDiagnosticsAsync(
         CancellationToken cancellationToken = default)
         => Core.DiagnoseAsync(cancellationToken);
+
+    /// <summary>
+    /// Runs diagnostics and lets WendyCore dispatch the resulting task to a capable module.
+    /// </summary>
+    public Task<CoreExecutionResult> RunDiagnosticWorkflowAsync(
+        CancellationToken cancellationToken = default)
+        => Core.DiagnoseAndExecuteAsync(cancellationToken);
 }
