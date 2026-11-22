@@ -47,7 +47,7 @@ public sealed class NetworkRecoveryModule : IModule
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "ipconfig.exe",
+                FileName = Path.Combine(Environment.SystemDirectory, "ipconfig.exe"),
                 UseShellExecute = false,
                 CreateNoWindow = true
             }
