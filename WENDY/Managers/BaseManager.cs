@@ -1,10 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+namespace WENDY.Managers;
 
-namespace WENDY.Managers
+/// <summary>
+/// Shared base for managers. Concrete managers implement their own data collection.
+/// </summary>
+public abstract class BaseManager : IManager
 {
-    internal class BaseManager
-    {
-    }
+    public abstract string Name { get; }
+
+    public Task<ManagerReport> CollectAsync(CancellationToken cancellationToken = default)
+        => CollectCoreAsync(cancellationToken);
+
+    protected abstract Task<ManagerReport> CollectCoreAsync(
+        CancellationToken cancellationToken);
 }
