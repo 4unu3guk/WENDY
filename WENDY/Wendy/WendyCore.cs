@@ -5,7 +5,7 @@ namespace WENDY.Wendy;
 
 /// <summary>
 /// Central coordinator of WENDY.
-/// Managers report observations; this core interprets them and decides the next step.
+/// Managers report observations; this core interprets them and decides the next action.
 /// </summary>
 public sealed class WendyCore
 {
@@ -21,7 +21,7 @@ public sealed class WendyCore
     {
         ArgumentNullException.ThrowIfNull(manager);
 
-        if (_managers.Any(item => item.Name == manager.Name))
+        if (_managers.Any(item => string.Equals(item.Name, manager.Name, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException($"Manager '{manager.Name}' is already registered.");
 
         _managers.Add(manager);
@@ -31,15 +31,45 @@ public sealed class WendyCore
     {
         ArgumentNullException.ThrowIfNull(module);
 
-        if (_modules.Any(item => item.Name == module.Name))
+        if (_modules.Any(item => string.Equals(item.Name, module.Name, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException($"Module '{module.Name}' is already registered.");
 
         _modules.Add(module);
     }
 
     /// <summary>
-    /// Runs registered managers, then interprets their reports and chooses the next diagnostic step.
+    /// Runs managers, interprets their reports, selects a capable module and executes it.
+    /// The core owns the decision and dispatch process.
     /// </summary>
+    public async Task<CoreExecutionResult> DiagnoseAndExecuteAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await DiagnoseAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var request = CreateModuleRequest(decision);
+        var selectedModule = _modules.FirstOrDefault(module => module.CanExecute(request));
+
+        if (selectedModule is null)
+        {
+            return new CoreExecutionResult(
+                decision,
+                null,
+                null,
+                "No registered module declared support for this task.");
+        }
+
+        var result = await selectedModule.ExecuteAsync(request, cancellationToken);
+
+        return new CoreExecutionResult(
+            decision,
+            selectedModule.Name,
+            result,
+            result.Succeeded
+                ? "The selected module completed the task."
+                : "The selected module reported that the task did not succeed.");
+    }
+
     public async Task<CoreDecision> DiagnoseAsync(
         CancellationToken cancellationToken = default)
     {
@@ -59,6 +89,20 @@ public sealed class WendyCore
         }
 
         return reports.AsReadOnly();
+    }
+
+    private static ModuleRequest CreateModuleRequest(CoreDecision decision)
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["DecisionKind"] = decision.Kind.ToString(),
+            ["Summary"] = decision.Summary,
+            ["RecommendedNextStep"] = decision.RecommendedNextStep
+        };
+
+        return new ModuleRequest(
+            $"Handle{decision.Kind}",
+            parameters);
     }
 
     private static CoreDecision InterpretReports(IReadOnlyList<ManagerReport> reports)
@@ -88,9 +132,7 @@ public sealed class WendyCore
         }
 
         if (!TryReadFact(networkReport, "Dns.Success", out var dnsSucceeded))
-        {
             return UnknownResult(reports, "The network report does not contain a DNS result.");
-        }
 
         if (!dnsSucceeded)
         {
@@ -102,9 +144,7 @@ public sealed class WendyCore
         }
 
         if (!TryReadFact(networkReport, "Tcp443.Success", out var tcpSucceeded))
-        {
             return UnknownResult(reports, "The network report does not contain a TCP port 443 result.");
-        }
 
         if (!tcpSucceeded)
         {
@@ -116,9 +156,7 @@ public sealed class WendyCore
         }
 
         if (!TryReadFact(networkReport, "Https.Success", out var httpsSucceeded))
-        {
             return UnknownResult(reports, "The network report does not contain an HTTPS result.");
-        }
 
         if (!httpsSucceeded)
         {
