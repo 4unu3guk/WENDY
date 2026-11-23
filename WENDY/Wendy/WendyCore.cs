@@ -113,6 +113,12 @@ public sealed class WendyCore
                     "DNS and TCP succeeded, but HTTPS failed. The evidence is not sufficient to alter DNS or proxy settings automatically; the next diagnostic stage should inspect TLS, proxy and HTTP response details.",
                 CoreDecisionKind.IncompleteReport =>
                     "The diagnostic report is incomplete. Recovery is withheld until the missing evidence is collected.",
+                CoreDecisionKind.NetworkAdapterUnavailable =>
+                    "Windows reports no active network adapter. Wendy will not attempt DNS or route changes until an active connection is available.",
+                CoreDecisionKind.NoDnsServersConfigured =>
+                    "The active network configuration reports no DNS servers. Wendy will not guess or replace resolver addresses; the adapter and DHCP configuration must be inspected first.",
+                CoreDecisionKind.NoDefaultGateway =>
+                    "The active network configuration reports no default gateway. Wendy will not invent a route; inspect the connection and DHCP/router configuration.",
                 _ =>
                     "The available diagnostic evidence does not currently justify an automatic network change."
             };
@@ -241,11 +247,40 @@ public sealed class WendyCore
                 reports);
         }
 
+        var environmentReport = reports.FirstOrDefault(
+            report => string.Equals(
+                report.ManagerName,
+                "NetworkEnvironment",
+                StringComparison.OrdinalIgnoreCase));
+
+        // Environment facts refine the interpretation; they never replace the connectivity probe.
+        if (environmentReport is not null
+            && TryReadIntegerFact(environmentReport, "Adapters.ActiveCount", out var activeAdapterCount)
+            && activeAdapterCount == 0)
+        {
+            return new CoreDecision(
+                CoreDecisionKind.NetworkAdapterUnavailable,
+                "Windows reports no active non-loopback network adapter.",
+                "Restore an active network connection, then repeat the connectivity checks.",
+                reports);
+        }
+
         if (!TryReadFact(networkReport, "Dns.Success", out var dnsSucceeded))
             return UnknownResult(reports, "The network report does not contain a DNS result.");
 
         if (!dnsSucceeded)
         {
+            if (environmentReport is not null
+                && TryReadTextFact(environmentReport, "Dns.Servers", out var configuredDnsServers)
+                && string.IsNullOrWhiteSpace(configuredDnsServers))
+            {
+                return new CoreDecision(
+                    CoreDecisionKind.NoDnsServersConfigured,
+                    "YouTube DNS resolution failed and the readable adapter configuration contains no DNS servers.",
+                    "Inspect adapter and DHCP DNS configuration before considering any resolver change.",
+                    reports);
+            }
+
             return new CoreDecision(
                 CoreDecisionKind.DnsFailure,
                 "YouTube's hostname could not be resolved.",
@@ -258,6 +293,17 @@ public sealed class WendyCore
 
         if (!tcpSucceeded)
         {
+            if (environmentReport is not null
+                && TryReadTextFact(environmentReport, "Gateways", out var configuredGateways)
+                && string.IsNullOrWhiteSpace(configuredGateways))
+            {
+                return new CoreDecision(
+                    CoreDecisionKind.NoDefaultGateway,
+                    "YouTube DNS resolution succeeded, TCP port 443 failed, and the readable adapter configuration contains no gateway.",
+                    "Inspect the active connection and gateway assignment before changing routes.",
+                    reports);
+            }
+
             return new CoreDecision(
                 CoreDecisionKind.TcpFailure,
                 "DNS works, but a TCP connection to YouTube on port 443 failed.",
@@ -289,6 +335,19 @@ public sealed class WendyCore
         value = false;
         return report.Facts.TryGetValue(key, out var rawValue)
             && bool.TryParse(rawValue, out value);
+    }
+
+    private static bool TryReadIntegerFact(ManagerReport report, string key, out int value)
+    {
+        value = 0;
+        return report.Facts.TryGetValue(key, out var rawValue)
+            && int.TryParse(rawValue, out value);
+    }
+
+    private static bool TryReadTextFact(ManagerReport report, string key, out string value)
+    {
+        value = string.Empty;
+        return report.Facts.TryGetValue(key, out value!);
     }
 
     private static bool TryReadModuleFact(
