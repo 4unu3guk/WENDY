@@ -9,6 +9,9 @@ public enum CoreDecisionKind
     NoApplicableDiagnostic,
     IncompleteReport,
     DnsFailure,
+    NoDnsServersConfigured,
+    NetworkAdapterUnavailable,
+    NoDefaultGateway,
     TcpFailure,
     HttpsFailure,
     YouTubeReachable
