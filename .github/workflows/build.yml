@@ -22,7 +22,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore
-        run: dotnet restore WENDY/WENDY.csproj
+        run: dotnet restore WENDY.slnx
 
       - name: Build
-        run: dotnet build WENDY/WENDY.csproj --configuration Release --no-restore
+        run: dotnet build WENDY.slnx --configuration Release --no-restore
+
+      - name: Run core tests
+        run: dotnet run --project WENDY.Tests/WENDY.Tests.csproj --configuration Release --no-build
