@@ -203,7 +203,32 @@ public sealed class WendyCore
         foreach (var manager in _managers)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            reports.Add(await manager.CollectAsync(cancellationToken));
+
+            try
+            {
+                reports.Add(await manager.CollectAsync(cancellationToken));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // A caller-requested cancellation must stop the whole diagnostic workflow.
+                throw;
+            }
+            catch (Exception exception)
+            {
+                // A failing manager must not prevent other managers from reporting.
+                // The synthetic report keeps the failure visible to the core's decision logic.
+                reports.Add(new ManagerReport(
+                    manager.Name,
+                    DateTimeOffset.UtcNow,
+                    false,
+                    $"Manager '{manager.Name}' failed while collecting diagnostic information.",
+                    new Dictionary<string, string>
+                    {
+                        ["Manager.CollectionSucceeded"] = "False",
+                        ["Manager.ExceptionType"] = exception.GetType().FullName ?? exception.GetType().Name,
+                        ["Manager.Error"] = exception.Message
+                    }));
+            }
         }
 
         return reports.AsReadOnly();
